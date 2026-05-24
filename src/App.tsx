@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { Toaster } from 'react-hot-toast';
 
 // Layouts
 import { DashboardLayout } from './components/layout/DashboardLayout';
@@ -33,6 +34,7 @@ import { ChatPage } from './pages/chat/ChatPage';
 function App() {
   return (
     <AuthProvider>
+      <Toaster position="top-right" />
       <Router>
         <Routes>
           {/* Authentication Routes */}
