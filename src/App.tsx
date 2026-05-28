@@ -5,6 +5,7 @@ import { Toaster } from 'react-hot-toast';
 
 // Layouts
 import { DashboardLayout } from './components/layout/DashboardLayout';
+import { MeetingsPage } from './pages/dashboard/MeetingsPage';
 
 // Auth Pages
 import { LoginPage } from './pages/auth/LoginPage';
@@ -30,6 +31,7 @@ import { DealsPage } from './pages/deals/DealsPage';
 
 // Chat Pages
 import { ChatPage } from './pages/chat/ChatPage';
+import { VideoCallPage } from './pages/video/VideoCallPage';
 
 function App() {
   return (
@@ -38,6 +40,7 @@ function App() {
       <Router>
         <Routes>
           {/* Authentication Routes */}
+          <Route path="/video/:roomId" element={<VideoCallPage />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<RegisterPage />} />
           
@@ -84,7 +87,11 @@ function App() {
           
           <Route path="/deals" element={<DashboardLayout />}>
             <Route index element={<DealsPage />} />
+            </Route>
+          <Route path="/meetings" element={<DashboardLayout />}>
+              <Route index element={<MeetingsPage />} />
           </Route>
+          
           
           {/* Chat Routes */}
           <Route path="/chat" element={<DashboardLayout />}>
