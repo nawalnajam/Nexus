@@ -38,27 +38,53 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     restore();
   }, []);
 
-  const login = async (email: string, password: string, _role: UserRole): Promise<void> => {
-    setIsLoading(true);
-    try {
-      const res = await fetch(`${BASE_URL}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (!data.success) throw new Error(data.message || 'Login failed');
-      setToken(data.accessToken);
-      setUser(data.user);
-      toast.success(`Welcome back, ${data.user.name}! ✅ Connected to backend`);
-    } catch (error) {
-      toast.error((error as Error).message);
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  };
+const login = async (email: string, password: string, _role: UserRole): Promise<void> => {
+  setIsLoading(true);
+  try {
+    const res = await fetch(`${BASE_URL}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ email, password }),
+    });
+    const data = await res.json();
+    if (!data.success) throw new Error(data.message || 'Login failed');
+    setToken(data.accessToken);
+    setUser(data.user);
+    toast.success(`Welcome back, ${data.user.name}! ✅ Connected to backend`);
+  } catch (error) {
+    toast.error((error as Error).message);
+    throw error;
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+// New 2FA functions
+const sendOTP = async (email: string): Promise<void> => {
+  const res  = await fetch(`${BASE_URL}/auth/send-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  const data = await res.json();
+  if (!data.success) throw new Error(data.message);
+  toast.success('OTP sent to your email! 📧');
+};
+
+const verifyOTP = async (email: string, otp: string): Promise<void> => {
+  const res  = await fetch(`${BASE_URL}/auth/verify-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ email, otp }),
+  });
+  const data = await res.json();
+  if (!data.success) throw new Error(data.message);
+  setToken(data.accessToken);
+  setUser(data.user);
+  toast.success('Login successful! ✅');
+};
 
   const register = async (name: string, email: string, password: string, role: UserRole): Promise<void> => {
     setIsLoading(true);

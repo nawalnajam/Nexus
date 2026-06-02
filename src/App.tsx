@@ -32,6 +32,7 @@ import { DealsPage } from './pages/deals/DealsPage';
 // Chat Pages
 import { ChatPage } from './pages/chat/ChatPage';
 import { VideoCallPage } from './pages/video/VideoCallPage';
+import { PaymentsPage } from './pages/dashboard/PaymentsPage';
 
 function App() {
   return (
@@ -90,6 +91,9 @@ function App() {
             </Route>
           <Route path="/meetings" element={<DashboardLayout />}>
               <Route index element={<MeetingsPage />} />
+          </Route>
+          <Route path="/payments" element={<DashboardLayout />}>
+               <Route index element={<PaymentsPage />} />
           </Route>
           
           

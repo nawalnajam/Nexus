@@ -1,6 +1,9 @@
 const { validationResult } = require('express-validator');
 const User = require('../models/User');
 const { generateAccessToken, generateRefreshToken, verifyRefreshToken } = require('../utils/jwt');
+const { sendOTPEmail } = require('../config/email');
+const OTP = require('../models/OTP');
+const crypto = require('crypto');
 
 // ─── Helper ────────────────────────────────────────────────────────────────
 const sendTokenResponse = (user, statusCode, res) => {
@@ -98,6 +101,66 @@ exports.logout = (_req, res) => {
 exports.getMe = async (req, res, next) => {
   try {
     res.json({ success: true, user: req.user.toPublicJSON() });
+  } catch (err) {
+    next(err);
+  }
+};
+
+
+// ─── POST /api/auth/send-otp ───────────────────────────────────────────────
+exports.sendOTP = async (req, res, next) => {
+  try {
+    const { email } = req.body;
+
+    const user = await User.findOne({ email });
+    if (!user)
+      return res.status(404).json({ success: false, message: 'User not found' });
+
+    // Generate 6 digit OTP
+    const otp = crypto.randomInt(100000, 999999).toString();
+
+    // Save OTP to DB (delete old ones first)
+    await OTP.deleteMany({ email });
+    await OTP.create({
+      email,
+      otp,
+      expiresAt: new Date(Date.now() + 10 * 60 * 1000), // 10 minutes
+    });
+
+    // Send email
+    await sendOTPEmail(email, otp, user.name);
+    // OTP ko terminal mein print karo
+console.log(`OTP for ${email}: ${otp}`);
+
+    res.json({ success: true, message: `OTP sent to ${email}` });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── POST /api/auth/verify-otp ─────────────────────────────────────────────
+exports.verifyOTP = async (req, res, next) => {
+  try {
+    const { email, otp } = req.body;
+
+    const otpDoc = await OTP.findOne({ email, used: false });
+
+    if (!otpDoc)
+      return res.status(400).json({ success: false, message: 'OTP not found or already used' });
+
+    if (otpDoc.otp !== otp)
+      return res.status(400).json({ success: false, message: 'Invalid OTP' });
+
+    if (otpDoc.expiresAt < new Date())
+      return res.status(400).json({ success: false, message: 'OTP expired' });
+
+    // Mark as used
+    otpDoc.used = true;
+    await otpDoc.save();
+
+    // Login the user
+    const user = await User.findOne({ email });
+    sendTokenResponse(user, 200, res);
   } catch (err) {
     next(err);
   }

@@ -2,6 +2,8 @@ const express = require('express');
 const { body } = require('express-validator');
 const authController = require('../controllers/authController');
 const { protect } = require('../middleware/auth');
+const { register, login, refresh, logout, getMe, sendOTP, verifyOTP } = require('../controllers/authController');
+
 
 const router = express.Router();
 
@@ -27,5 +29,11 @@ router.post('/login',    loginRules,    authController.login);
 router.post('/refresh',                 authController.refresh);
 router.post('/logout',                  authController.logout);
 router.get('/me',        protect,       authController.getMe);
+router.post('/send-otp',   body('email').isEmail(), sendOTP);
+// Is se replace karo
+router.post('/verify-otp', [
+  body('email').isEmail().withMessage('Valid email required'),
+  body('otp').notEmpty().withMessage('OTP required'),
+], verifyOTP);
 
 module.exports = router;
