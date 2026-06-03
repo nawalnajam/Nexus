@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { FileText, Upload, Download, Trash2, Share2, Loader } from 'lucide-react';
+import { FileText, Upload, Download, Trash2, Share2, Loader, PenTool, X } from 'lucide-react';
 import { Card, CardHeader, CardBody } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -19,6 +19,7 @@ interface Document {
   status: string;
   sharedWith: { _id: string; name: string }[];
   uploadedBy: { _id: string; name: string; avatar: string };
+  signatures: { signedBy: { _id: string; name: string }; signedAt: string; signatureUrl: string }[];
   createdAt: string;
 }
 
@@ -30,10 +31,13 @@ const formatSize = (bytes: number) => {
 
 export const DocumentsPage: React.FC = () => {
   const { user } = useAuth();
-  const [documents, setDocuments]   = useState<Document[]>([]);
-  const [loading, setLoading]       = useState(true);
-  const [uploading, setUploading]   = useState(false);
-  const fileInputRef                = useRef<HTMLInputElement>(null);
+  const [documents, setDocuments]     = useState<Document[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [uploading, setUploading]     = useState(false);
+  const [signingDoc, setSigningDoc]   = useState<Document | null>(null);
+  const fileInputRef                  = useRef<HTMLInputElement>(null);
+  const canvasRef                     = useRef<HTMLCanvasElement>(null);
+  const isDrawing                     = useRef(false);
 
   const token = localStorage.getItem('nexus_access_token');
 
@@ -55,28 +59,93 @@ export const DocumentsPage: React.FC = () => {
 
   useEffect(() => { fetchDocuments(); }, []);
 
+  // ── Canvas drawing ───────────────────────────────────────────────────────
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    isDrawing.current = true;
+    const canvas = canvasRef.current!;
+    const ctx    = canvas.getContext('2d')!;
+    const rect   = canvas.getBoundingClientRect();
+    ctx.beginPath();
+    ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing.current) return;
+    const canvas = canvasRef.current!;
+    const ctx    = canvas.getContext('2d')!;
+    const rect   = canvas.getBoundingClientRect();
+    ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+    ctx.strokeStyle = '#1e40af';
+    ctx.lineWidth   = 2;
+    ctx.lineCap     = 'round';
+    ctx.stroke();
+  };
+
+  const stopDrawing = () => { isDrawing.current = false; };
+
+  const clearCanvas = () => {
+    const canvas = canvasRef.current!;
+    const ctx    = canvas.getContext('2d')!;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  };
+
+  // ── Submit signature ─────────────────────────────────────────────────────
+  const handleSign = async () => {
+    if (!signingDoc) return;
+    const canvas = canvasRef.current!;
+
+    // Check if canvas is empty
+    const ctx  = canvas.getContext('2d')!;
+    const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+    const isEmpty = !data.some(channel => channel !== 0);
+    if (isEmpty) { toast.error('Please draw your signature first'); return; }
+
+    canvas.toBlob(async (blob) => {
+      if (!blob) return;
+      const formData = new FormData();
+      formData.append('signature', blob, 'signature.png');
+
+      try {
+        const res  = await fetch(`${BASE_URL}/documents/${signingDoc._id}/sign`, {
+          method:  'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          credentials: 'include',
+          body:    formData,
+        });
+        const data = await res.json();
+        if (data.success) {
+          toast.success('Document signed successfully! ✅');
+          setSigningDoc(null);
+          fetchDocuments();
+        } else {
+          toast.error(data.message || 'Signing failed');
+        }
+      } catch {
+        toast.error('Signing failed');
+      }
+    }, 'image/png');
+  };
+
   // ── Upload document ──────────────────────────────────────────────────────
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setUploading(true);
     const formData = new FormData();
     formData.append('document', file);
     formData.append('title', file.name);
     formData.append('category', 'other');
-
     try {
       const res  = await fetch(`${BASE_URL}/documents`, {
-        method: 'POST',
+        method:  'POST',
         headers: { Authorization: `Bearer ${token}` },
         credentials: 'include',
-        body: formData,
+        body:    formData,
       });
       const data = await res.json();
       if (data.success) {
         setDocuments(prev => [data.document, ...prev]);
-        toast.success('Document uploaded successfully! ✅ Saved to Cloudinary');
+        toast.success('Document uploaded! ✅ Saved to Cloudinary');
       } else {
         toast.error(data.message || 'Upload failed');
       }
@@ -93,7 +162,7 @@ export const DocumentsPage: React.FC = () => {
     if (!confirm('Delete this document?')) return;
     try {
       const res  = await fetch(`${BASE_URL}/documents/${docId}`, {
-        method: 'DELETE',
+        method:  'DELETE',
         headers: { Authorization: `Bearer ${token}` },
         credentials: 'include',
       });
@@ -107,34 +176,27 @@ export const DocumentsPage: React.FC = () => {
     }
   };
 
-  // ── Category badge color ─────────────────────────────────────────────────
   const getCategoryVariant = (category: string) => {
     const map: Record<string, any> = {
-      pitch_deck: 'primary',
-      contract:   'error',
-      financial:  'success',
-      legal:      'warning',
-      other:      'gray',
+      pitch_deck: 'primary', contract: 'error',
+      financial: 'success',  legal: 'warning', other: 'gray',
     };
     return map[category] || 'gray';
   };
+
+  const alreadySigned = (doc: Document) =>
+    doc.signatures?.some(s => String(s.signedBy?._id) === String(user?._id));
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Documents</h1>
-          <p className="text-gray-600">Manage and share your important files</p>
+          <p className="text-gray-600">Manage and sign your important files</p>
         </div>
-
         <div>
-          <input
-            type="file"
-            ref={fileInputRef}
-            onChange={handleUpload}
-            className="hidden"
-            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt"
-          />
+          <input type="file" ref={fileInputRef} onChange={handleUpload} className="hidden"
+            accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt" />
           <Button
             leftIcon={uploading ? <Loader size={18} className="animate-spin" /> : <Upload size={18} />}
             onClick={() => fileInputRef.current?.click()}
@@ -145,118 +207,129 @@ export const DocumentsPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-        {/* Storage info */}
-        <Card className="lg:col-span-1">
-          <CardHeader>
-            <h2 className="text-lg font-medium text-gray-900">Storage</h2>
-          </CardHeader>
-          <CardBody className="space-y-4">
+      {/* Document list */}
+      <Card>
+        <CardHeader>
+          <h2 className="text-lg font-medium text-gray-900">All Documents</h2>
+        </CardHeader>
+        <CardBody>
+          {loading ? (
+            <div className="flex justify-center py-8">
+              <Loader size={32} className="animate-spin text-primary-600" />
+            </div>
+          ) : documents.length === 0 ? (
+            <div className="text-center py-8">
+              <FileText size={40} className="mx-auto text-gray-400 mb-3" />
+              <p className="text-gray-600">No documents yet</p>
+            </div>
+          ) : (
             <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Total Files</span>
-                <span className="font-medium text-gray-900">{documents.length}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-600">Total Size</span>
-                <span className="font-medium text-gray-900">
-                  {formatSize(documents.reduce((acc, d) => acc + d.fileSize, 0))}
-                </span>
-              </div>
-            </div>
+              {documents.map(doc => (
+                <div key={doc._id} className="flex items-center p-4 hover:bg-gray-50 rounded-lg">
+                  <div className="p-2 bg-primary-50 rounded-lg mr-4">
+                    <FileText size={24} className="text-primary-600" />
+                  </div>
 
-            <div className="pt-4 border-t border-gray-200">
-              <h3 className="text-sm font-medium text-gray-900 mb-2">Quick Access</h3>
-              <div className="space-y-2">
-                {['pitch_deck', 'contract', 'financial', 'legal', 'other'].map(cat => (
-                  <button key={cat} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-md capitalize">
-                    {cat.replace('_', ' ')}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </CardBody>
-        </Card>
-
-        {/* Document list */}
-        <div className="lg:col-span-3">
-          <Card>
-            <CardHeader>
-              <h2 className="text-lg font-medium text-gray-900">All Documents</h2>
-            </CardHeader>
-            <CardBody>
-              {loading ? (
-                <div className="flex justify-center py-8">
-                  <Loader size={32} className="animate-spin text-primary-600" />
-                </div>
-              ) : documents.length === 0 ? (
-                <div className="text-center py-8">
-                  <FileText size={40} className="mx-auto text-gray-400 mb-3" />
-                  <p className="text-gray-600">No documents yet</p>
-                  <p className="text-sm text-gray-500 mt-1">Upload your first document</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {documents.map(doc => (
-                    <div
-                      key={doc._id}
-                      className="flex items-center p-4 hover:bg-gray-50 rounded-lg transition-colors duration-200"
-                    >
-                      <div className="p-2 bg-primary-50 rounded-lg mr-4">
-                        <FileText size={24} className="text-primary-600" />
-                      </div>
-
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <h3 className="text-sm font-medium text-gray-900 truncate">
-                            {doc.title}
-                          </h3>
-                          <Badge variant={getCategoryVariant(doc.category)} size="sm">
-                            {doc.category.replace('_', ' ')}
-                          </Badge>
-                          {doc.sharedWith?.length > 0 && (
-                            <Badge variant="secondary" size="sm">Shared</Badge>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
-                          <span className="uppercase">{doc.fileType}</span>
-                          <span>{formatSize(doc.fileSize)}</span>
-                          <span>{new Date(doc.createdAt).toLocaleDateString()}</span>
-                          <span>by {doc.uploadedBy?.name}</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 ml-4">
-                        <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer">
-                          <Button variant="ghost" size="sm" className="p-2" aria-label="Download">
-                            <Download size={18} />
-                          </Button>
-                        </a>
-
-                        <Button variant="ghost" size="sm" className="p-2" aria-label="Share">
-                          <Share2 size={18} />
-                        </Button>
-
-                        {String(doc.uploadedBy?._id) === String(user?._id) && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="p-2 text-error-600 hover:text-error-700"
-                            aria-label="Delete"
-                            onClick={() => handleDelete(doc._id)}
-                          >
-                            <Trash2 size={18} />
-                          </Button>
-                        )}
-                      </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h3 className="text-sm font-medium text-gray-900 truncate">{doc.title}</h3>
+                      <Badge variant={getCategoryVariant(doc.category)} size="sm">
+                        {doc.category.replace('_', ' ')}
+                      </Badge>
+                      {doc.signatures?.length > 0 && (
+                        <Badge variant="success" size="sm">
+                          ✍️ {doc.signatures.length} signature(s)
+                        </Badge>
+                      )}
                     </div>
-                  ))}
+                    <div className="flex items-center gap-4 mt-1 text-sm text-gray-500">
+                      <span className="uppercase">{doc.fileType}</span>
+                      <span>{formatSize(doc.fileSize)}</span>
+                      <span>{new Date(doc.createdAt).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 ml-4">
+                    <a href={doc.fileUrl} target="_blank" rel="noopener noreferrer">
+                      <Button variant="ghost" size="sm" className="p-2">
+                        <Download size={18} />
+                      </Button>
+                    </a>
+
+                    {/* Sign button */}
+                    {!alreadySigned(doc) ? (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSigningDoc(doc)}
+                        leftIcon={<PenTool size={14} />}
+                      >
+                        Sign
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-green-600 font-medium">✅ Signed</span>
+                    )}
+
+                    {String(doc.uploadedBy?._id) === String(user?._id) && (
+                      <Button
+                        variant="ghost" size="sm"
+                        className="p-2 text-red-600 hover:text-red-700"
+                        onClick={() => handleDelete(doc._id)}
+                      >
+                        <Trash2 size={18} />
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              )}
-            </CardBody>
-          </Card>
+              ))}
+            </div>
+          )}
+        </CardBody>
+      </Card>
+
+      {/* E-Signature Modal */}
+      {signingDoc && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 w-full max-w-md mx-4 shadow-xl">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Sign Document</h3>
+              <button onClick={() => setSigningDoc(null)}>
+                <X size={20} className="text-gray-500 hover:text-gray-700" />
+              </button>
+            </div>
+
+            <p className="text-sm text-gray-600 mb-4">
+              Signing: <strong>{signingDoc.title}</strong>
+            </p>
+
+            <div className="border-2 border-dashed border-gray-300 rounded-lg mb-4">
+              <canvas
+                ref={canvasRef}
+                width={400}
+                height={150}
+                className="w-full cursor-crosshair rounded-lg"
+                onMouseDown={startDrawing}
+                onMouseMove={draw}
+                onMouseUp={stopDrawing}
+                onMouseLeave={stopDrawing}
+              />
+            </div>
+
+            <p className="text-xs text-gray-400 mb-4 text-center">
+              Draw your signature above using mouse
+            </p>
+
+            <div className="flex gap-3">
+              <Button onClick={handleSign} fullWidth leftIcon={<PenTool size={16} />}>
+                Submit Signature
+              </Button>
+              <Button variant="outline" onClick={clearCanvas}>
+                Clear
+              </Button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 };

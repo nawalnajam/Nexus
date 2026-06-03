@@ -93,12 +93,13 @@ export const Navbar: React.FC = () => {
                 </Button>
                 
                 <Link to={profileRoute} className="flex items-center space-x-2 ml-2">
-                  <Avatar
-                    src={user.avatarUrl}
-                    alt={user.name}
-                    size="sm"
-                    status={user.isOnline ? 'online' : 'offline'}
-                  />
+                 <Avatar
+  key={user.avatar}
+  src={user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random&color=fff&size=128`}
+  alt={user.name}
+  size="sm"
+  status="online"
+/>
                   <span className="text-sm font-medium text-gray-700">{user.name}</span>
                 </Link>
               </div>

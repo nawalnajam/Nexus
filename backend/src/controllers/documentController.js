@@ -88,10 +88,18 @@ exports.deleteDocument = async (req, res, next) => {
     if (String(document.uploadedBy) !== String(req.user._id))
       return res.status(403).json({ success: false, message: 'Only uploader can delete' });
 
-    // Delete from Cloudinary
-    await cloudinary.uploader.destroy(document.publicId, { resource_type: 'raw' });
+    // Try to delete from Cloudinary (don't fail if it errors)
+    try {
+      if (document.publicId) {
+        await cloudinary.uploader.destroy(document.publicId, { resource_type: 'raw' });
+      }
+    } catch (cloudErr) {
+      console.log('Cloudinary delete warning:', cloudErr.message);
+    }
 
+    // Always delete from DB
     await document.deleteOne();
+
     res.json({ success: true, message: 'Document deleted' });
   } catch (err) {
     next(err);

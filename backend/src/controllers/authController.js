@@ -100,7 +100,15 @@ exports.logout = (_req, res) => {
 // ─── GET /api/auth/me ──────────────────────────────────────────────────────
 exports.getMe = async (req, res, next) => {
   try {
-    res.json({ success: true, user: req.user.toPublicJSON() });
+    let user = req.user;
+
+    // Avatar nahi hai toh auto generate karo
+    if (!user.avatar) {
+      user.avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(user.name)}&background=random&color=fff&size=128`;
+      await user.save({ validateBeforeSave: false });
+    }
+
+    res.json({ success: true, user: user.toPublicJSON() });
   } catch (err) {
     next(err);
   }
