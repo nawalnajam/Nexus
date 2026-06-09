@@ -5,7 +5,7 @@
 **Frontend:** https://nexus-3i7a.vercel.app
 
 ## 📹 Demo Video
-[Click here to watch demo](#) <!-- video link yahan daalo -->
+[Click here to watch demo](#) <!-- video link  -->
 
 ## ✅ Features
 - 🔐 JWT Authentication + 2FA OTP
