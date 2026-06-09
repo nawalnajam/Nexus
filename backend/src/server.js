@@ -16,6 +16,8 @@ const videoRoutes     = require('./routes/video');
 const documentRoutes  = require('./routes/documents');
 const paymentRoutes   = require('./routes/payments');
 const errorHandler    = require('./middleware/errorHandler');
+const swaggerUi   = require('swagger-ui-express');
+const swaggerSpec = require('./config/swagger');
 
 // ── Bootstrap DB ───────────────────────────────────────────────────────────
 connectDB();
@@ -144,10 +146,15 @@ app.use('/api/meetings', meetingRoutes);
 app.use('/api/video',    videoRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/payments',  paymentRoutes);
+app.use('/api/docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customSiteTitle: 'Nexus API Docs',
+  customCss: '.swagger-ui .topbar { background-color: #4f46e5; }',
+}));
 
 // ── 404 & Error handlers ───────────────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ success: false, message: 'Route not found' }));
 app.use(errorHandler);
+
 
 // ── Start server ───────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
