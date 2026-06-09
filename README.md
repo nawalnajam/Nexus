@@ -45,4 +45,4 @@ npm run dev
 ```
 
 ## 📋 Environment Variables
-See `backend/.env.example`
+See `backend/.env`
